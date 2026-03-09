@@ -245,22 +245,30 @@ def process_input_event(bit):
         execute_impulse(bit)
         return
 
-    log_event(f"System: Führe konfigurierte Aktion für {input_name} aus.")
-    action_type = action_config.get('type')
+    # Make sure we have a list to iterate over, for single actions and multiple actions
+    actions = action_config if isinstance(action_config, list) else [action_config]
 
-    if action_type == 'output':
-        target = action_config.get('target')
-        mode = action_config.get('mode', 'impulse')
-        if target is None:
-            log_event(f"WARNUNG: Fehlende 'target' Konfiguration für {input_name}.")
-            return
-        if mode == 'impulse':
-            duration = action_config.get('duration')
-            execute_impulse(target, duration)
-        elif mode == 'toggle':
-            execute_toggle(target)
-    elif action_type == 'webhook':
-        execute_webhook(action_config)
+    log_event(f"System: {input_name} hat {len(actions)} Aktion(en) ausgelöst.")
+
+    for i, action in enumerate(actions):
+        action_type = action.get('type')
+
+        # Start each action in a new thread to run them in parallel
+        if action_type == 'output':
+            target = action.get('target')
+            mode = action.get('mode', 'impulse')
+            if target is None:
+                log_event(f"WARNUNG: Fehlende 'target' Konfiguration für Aktion {i+1} von {input_name}.")
+                continue
+            if mode == 'impulse':
+                duration = action.get('duration')
+                threading.Thread(target=execute_impulse, args=(target, duration)).start()
+            elif mode == 'toggle':
+                threading.Thread(target=execute_toggle, args=(target,)).start()
+        elif action_type == 'webhook':
+            threading.Thread(target=execute_webhook, args=(action,)).start()
+        else:
+            log_event(f"WARNUNG: Unbekannter Aktionstyp '{action_type}' für {input_name} in Aktion {i+1}.")
 
 def input_monitor():
     if not PiFaceWebHandler.pifacedigital: return

@@ -11,24 +11,36 @@
         "0": "Klingel"
     },
     "input_actions": {
-        "0": {
-            "type": "output",
-            "target": 0,
-            "mode": "impulse",
-            "duration": 3.5
-        },
+        "0": [
+            {
+                "type": "output",
+                "target": 0,
+                "mode": "impulse",
+                "duration": 3.5
+            },
+            {
+                "type": "webhook",
+                "url": "https://log.system/door_opened"
+            }
+        ],
         "1": {
             "type": "output",
             "target": 7,
             "mode": "toggle"
         },
-        "2": {
-            "type": "webhook",
-            "url": "https://api.beispiel.de/benachrichtigung",
-            "method": "POST",
-            "payload": { "ereignis": "Es hat geklingelt!" }
-        }
-    }
+        "2": [
+            {
+                "type": "webhook",
+                "url": "https://api.beispiel.de/benachrichtigung",
+                "method": "POST",
+                "payload": { "ereignis": "Es hat geklingelt!" }
+            },
+            {
+                "type": "webhook",
+                "url": "https://ha.local/api/klingel_event"
+            }
+        ]
+    },
     "impulse_duration": 2.0,
     "update_interval": 0.5,
     "log_file": "piface.log",

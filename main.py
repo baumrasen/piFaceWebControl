@@ -1,5 +1,6 @@
 import sys
 import subprocess
+import urllib.request
 import http.server
 import urllib.parse
 import json
@@ -22,7 +23,8 @@ def load_config():
         "log_file": "piface.log",
         "log_history_size": 20,
         "output_names": {},
-        "input_names": {}
+        "input_names": {},
+        "input_actions": {}
     }
     if os.path.exists(CONFIG_FILE):
         try:
@@ -161,12 +163,12 @@ class PiFaceWebHandler(http.server.BaseHTTPRequestHandler):
         elif self.path.startswith("/set"):
             bit = int(urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)["bit"][0])
             log_event(f"Web-UI: Befehl EIN für {get_output_name(bit)} empfangen.")
-            threading.Thread(target=trigger_impulse, args=(bit,)).start()
+            threading.Thread(target=execute_impulse, args=(bit,)).start()
             self.send_response(200); self.end_headers()
         elif self.path.startswith("/simulate_input"):
             bit = int(urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)["bit"][0])
             log_event(f"Web-UI: Simulation für {get_input_name(bit)} empfangen.")
-            threading.Thread(target=trigger_impulse, args=(bit,)).start()
+            threading.Thread(target=process_input_event, args=(bit,)).start()
             self.send_response(200); self.end_headers()
         else:
             log_event(f"Login: User {cfg['user_name']} (IP: {self.client_address[0]})")
@@ -180,19 +182,85 @@ class PiFaceWebHandler(http.server.BaseHTTPRequestHandler):
                 input_names_json=json.dumps(cfg.get('input_names', {}))
             ).encode())
 
-def trigger_impulse(bit):
+def execute_impulse(bit, duration=None):
+    actual_duration = duration if duration is not None else cfg['impulse_duration']
+    output_name = get_output_name(bit)
     if PiFaceWebHandler.pifacedigital:
         PiFaceWebHandler.pifacedigital.output_pins[bit].turn_on()
-        time.sleep(cfg['impulse_duration'])
+        time.sleep(actual_duration)
         PiFaceWebHandler.pifacedigital.output_pins[bit].turn_off()
-        log_event(f"System: {get_output_name(bit)} nach {cfg['impulse_duration']}s automatisch AUS.")
+        log_event(f"System: {output_name} nach Impuls ({actual_duration}s) wieder AUS.")
     else:
         # Simulation logic
-        log_event(f"Simulation: {get_output_name(bit)} EIN.")
         PiFaceWebHandler.simulated_output_state |= (1 << bit)
-        time.sleep(cfg['impulse_duration'])
+        time.sleep(actual_duration)
         PiFaceWebHandler.simulated_output_state &= ~(1 << bit)
-        log_event(f"Simulation: {get_output_name(bit)} nach {cfg['impulse_duration']}s automatisch AUS.")
+        log_event(f"Simulation: {output_name} nach Impuls ({actual_duration}s) wieder AUS.")
+
+def execute_toggle(bit):
+    output_name = get_output_name(bit)
+    if PiFaceWebHandler.pifacedigital:
+        current_state = PiFaceWebHandler.pifacedigital.output_pins[bit].value
+        new_state = 1 - current_state
+        PiFaceWebHandler.pifacedigital.output_pins[bit].value = new_state
+        log_event(f"System: {output_name} umgeschaltet auf {'EIN' if new_state else 'AUS'}.")
+    else:
+        # Simulation logic
+        is_on = (PiFaceWebHandler.simulated_output_state >> bit) & 1
+        if is_on:
+            PiFaceWebHandler.simulated_output_state &= ~(1 << bit)
+            log_event(f"Simulation: {output_name} umgeschaltet auf AUS.")
+        else:
+            PiFaceWebHandler.simulated_output_state |= (1 << bit)
+            log_event(f"Simulation: {output_name} umgeschaltet auf EIN.")
+
+def execute_webhook(action_config):
+    url = action_config.get('url')
+    if not url:
+        log_event("WARNUNG: Webhook-Aktion ohne URL konfiguriert.")
+        return
+
+    method = action_config.get('method', 'GET').upper()
+    payload = action_config.get('payload')
+    headers = action_config.get('headers', {'Content-Type': 'application/json'})
+
+    log_event(f"System: Löse Webhook aus: {method} an {url}")
+    try:
+        data = json.dumps(payload).encode('utf-8') if payload and isinstance(payload, (dict, list)) else None
+        req = urllib.request.Request(url, data=data, headers=headers, method=method)
+        with urllib.request.urlopen(req, timeout=10) as response:
+            if 200 <= response.status < 300:
+                log_event(f"System: Webhook erfolgreich ausgelöst (Status: {response.status}).")
+            else:
+                log_event(f"WARNUNG: Webhook-Antwort mit Fehlerstatus: {response.status}.")
+    except Exception as e:
+        log_event(f"FEHLER: Webhook konnte nicht ausgelöst werden: {e}")
+
+def process_input_event(bit):
+    action_config = cfg.get('input_actions', {}).get(str(bit))
+    input_name = get_input_name(bit)
+
+    if not action_config:
+        log_event(f"System: Keine Aktion für {input_name} konfiguriert, nutze Standard (Impuls auf Ausgang {bit}).")
+        execute_impulse(bit)
+        return
+
+    log_event(f"System: Führe konfigurierte Aktion für {input_name} aus.")
+    action_type = action_config.get('type')
+
+    if action_type == 'output':
+        target = action_config.get('target')
+        mode = action_config.get('mode', 'impulse')
+        if target is None:
+            log_event(f"WARNUNG: Fehlende 'target' Konfiguration für {input_name}.")
+            return
+        if mode == 'impulse':
+            duration = action_config.get('duration')
+            execute_impulse(target, duration)
+        elif mode == 'toggle':
+            execute_toggle(target)
+    elif action_type == 'webhook':
+        execute_webhook(action_config)
 
 def input_monitor():
     if not PiFaceWebHandler.pifacedigital: return
@@ -202,7 +270,7 @@ def input_monitor():
         for i in range(8):
             if (curr >> i) & 1 and not (last_state >> i) & 1:
                 log_event(f"Hardware: {get_input_name(i)} EIN.")
-                threading.Thread(target=trigger_impulse, args=(i,)).start()
+                threading.Thread(target=process_input_event, args=(i,)).start()
         last_state = curr
         time.sleep(0.05)
 

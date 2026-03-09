@@ -10,7 +10,8 @@
     "input_names": {
         "0": "Türöffner",
         "2": "Klingel",
-        "3": "HA Event"
+        "3": "HA Event",
+        "4": "API Trigger"
     },
     "input_actions": {
         "0": [
@@ -47,6 +48,18 @@
                 "url": "https://homeassistant.local:8123/api/webhook/some_hook_id",
                 "method": "POST",
                 "verify_ssl": false
+            }
+        ],
+        "4": [
+            {
+                "type": "webhook",
+                "url": "https://service.api.com/v1/trigger",
+                "method": "POST",
+                "headers": {
+                    "X-API-KEY": "DEIN_GEHEIMER_API_SCHLUESSEL",
+                    "Content-Type": "application/json"
+                },
+                "payload": { "event": "trigger_from_piface" }
             }
         ]
     },

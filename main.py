@@ -20,7 +20,9 @@ def load_config():
         "impulse_duration": 2.0,
         "update_interval": 0.5,
         "log_file": "piface.log",
-        "log_history_size": 20
+        "log_history_size": 20,
+        "output_names": {},
+        "input_names": {}
     }
     if os.path.exists(CONFIG_FILE):
         try:
@@ -95,10 +97,14 @@ UI_TEMPLATE = """
         <p id="info">Initialisiere...</p>
     </div>
     <script>
+        var outputNames = {output_names_json};
+        var inputNames = {input_names_json};
         var logContainer = document.getElementById('log-container');
         for(var i=0; i<8; i++) {{
-            document.getElementById('out-grid').innerHTML += '<div id="out-'+i+'" class="pin clickable" onclick="sendTrigger('+i+')">'+'OUT '+i+'</div>';
-            document.getElementById('in-grid').innerHTML += '<div id="in-'+i+'" class="pin">IN '+i+'</div>';
+            var outName = (i in outputNames) ? outputNames[i] : 'OUT ' + i;
+            document.getElementById('out-grid').innerHTML += '<div id="out-'+i+'" class="pin clickable" onclick="sendTrigger('+i+')">'+outName+'</div>';
+            var inName = (i in inputNames) ? inputNames[i] : 'IN ' + i;
+            document.getElementById('in-grid').innerHTML += '<div id="in-'+i+'" class="pin">'+inName+'</div>';
         }}
         function sendTrigger(bit) {{ fetch('/set?bit=' + bit); }}
         function fetchStatus() {{
@@ -154,7 +160,12 @@ class PiFaceWebHandler(http.server.BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-type", "text/html")
             self.end_headers()
-            self.wfile.write(UI_TEMPLATE.format(error_display="none" if self.pifacedigital else "block", update_ms=int(cfg['update_interval']*1000)).encode())
+            self.wfile.write(UI_TEMPLATE.format(
+                error_display="none" if self.pifacedigital else "block",
+                update_ms=int(cfg['update_interval']*1000),
+                output_names_json=json.dumps(cfg.get('output_names', {})),
+                input_names_json=json.dumps(cfg.get('input_names', {}))
+            ).encode())
 
 def trigger_impulse(bit):
     if not PiFaceWebHandler.pifacedigital: return

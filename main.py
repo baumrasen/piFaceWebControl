@@ -97,7 +97,7 @@ UI_TEMPLATE = """
     <script>
         var logContainer = document.getElementById('log-container');
         for(var i=0; i<8; i++) {{
-            document.getElementById('out-grid').innerHTML += '<div id="out-'+i+'" class="pin clickable" onclick="sendTrigger('+i+')">'+(i<2?'🔒 TÜR ':'OUT ')+i+'</div>';
+            document.getElementById('out-grid').innerHTML += '<div id="out-'+i+'" class="pin clickable" onclick="sendTrigger('+i+')">'+'OUT '+i+'</div>';
             document.getElementById('in-grid').innerHTML += '<div id="in-'+i+'" class="pin">IN '+i+'</div>';
         }}
         function sendTrigger(bit) {{ fetch('/set?bit=' + bit); }}

@@ -53,5 +53,8 @@
     "impulse_duration": 2.0,
     "update_interval": 0.5,
     "log_file": "piface.log",
-    "log_history_size": 50
+    "log_history_size": 50,
+
+    "heartbeat_url": null,
+    "heartbeat_interval": 60
 }

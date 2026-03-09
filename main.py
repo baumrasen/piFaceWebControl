@@ -25,7 +25,9 @@ def load_config():
         "log_history_size": 20,
         "output_names": {},
         "input_names": {},
-        "input_actions": {}
+        "input_actions": {},
+        "heartbeat_url": None,
+        "heartbeat_interval": 60
     }
     if os.path.exists(CONFIG_FILE):
         try:
@@ -295,6 +297,28 @@ def get_my_ip():
     try: return subprocess.check_output("hostname -I", shell=True).decode('utf-8').strip().split()[0]
     except: return "127.0.0.1"
 
+def heartbeat_monitor():
+    url = cfg.get('heartbeat_url')
+    if not url:
+        return # Do nothing if no URL is configured
+
+    interval = cfg.get('heartbeat_interval', 60)
+    if not isinstance(interval, (int, float)) or interval <= 0:
+        log_event(f"WARNUNG: Ungültiges Heartbeat-Intervall ({interval}). Deaktiviere Heartbeat.")
+        return
+
+    log_event(f"Heartbeat-Monitor für {url} gestartet (Intervall: {interval}s).")
+
+    while True:
+        try:
+            with urllib.request.urlopen(url, timeout=10) as response:
+                if not (200 <= response.status < 300):
+                    log_event(f"WARNUNG: Heartbeat an {url} fehlgeschlagen (Status: {response.status}).")
+        except Exception as e:
+            log_event(f"FEHLER: Heartbeat an {url} konnte nicht gesendet werden: {e}")
+        
+        time.sleep(interval)
+
 if __name__ == "__main__":
     try:
         PiFaceWebHandler.pifacedigital = pifacedigitalio.PiFaceDigital()
@@ -302,4 +326,5 @@ if __name__ == "__main__":
         log_event("System gestartet - Hardware OK.")
     except Exception as e:
         log_event(f"System gestartet - Simulation ({e})")
+    threading.Thread(target=heartbeat_monitor, daemon=True).start()
     http.server.HTTPServer(('', cfg['port']), PiFaceWebHandler).serve_forever()

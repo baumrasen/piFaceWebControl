@@ -63,6 +63,12 @@ def get_last_logs(n=20):
     except:
         return ["Fehler beim Lesen der Log-Datei."]
 
+def get_output_name(bit):
+    return cfg['output_names'].get(str(bit), f"Ausgang {bit}")
+
+def get_input_name(bit):
+    return cfg['input_names'].get(str(bit), f"Eingang {bit}")
+
 # --- UI Template (gekürzt zur Übersicht, JavaScript nutzt cfg Werte) ---
 UI_TEMPLATE = """
 <!DOCTYPE html>
@@ -152,7 +158,7 @@ class PiFaceWebHandler(http.server.BaseHTTPRequestHandler):
             self.wfile.write(json.dumps({"input":in_val,"output":out_val,"ip":get_my_ip(),"logs":get_last_logs(cfg['log_history_size'])}).encode())
         elif self.path.startswith("/set"):
             bit = int(urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)["bit"][0])
-            log_event(f"Web-UI: Befehl EIN für Ausgang {bit} empfangen.")
+            log_event(f"Web-UI: Befehl EIN für {get_output_name(bit)} empfangen.")
             threading.Thread(target=trigger_impulse, args=(bit,)).start()
             self.send_response(200); self.end_headers()
         else:
@@ -172,7 +178,7 @@ def trigger_impulse(bit):
     PiFaceWebHandler.pifacedigital.output_pins[bit].turn_on()
     time.sleep(cfg['impulse_duration'])
     PiFaceWebHandler.pifacedigital.output_pins[bit].turn_off()
-    log_event(f"System: Ausgang {bit} nach {cfg['impulse_duration']}s automatisch AUS.")
+    log_event(f"System: {get_output_name(bit)} nach {cfg['impulse_duration']}s automatisch AUS.")
 
 def input_monitor():
     if not PiFaceWebHandler.pifacedigital: return
@@ -181,7 +187,7 @@ def input_monitor():
         curr = PiFaceWebHandler.pifacedigital.input_port.value
         for i in range(8):
             if (curr >> i) & 1 and not (last_state >> i) & 1:
-                log_event(f"Hardware: Eingang {i} EIN.")
+                log_event(f"Hardware: {get_input_name(i)} EIN.")
                 threading.Thread(target=trigger_impulse, args=(i,)).start()
         last_state = curr
         time.sleep(0.05)

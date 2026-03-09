@@ -10,12 +10,12 @@ import base64
 from datetime import datetime
 
 # --- Konfiguration laden ---
-CONFIG_FILE = "piface-web.json"
+CONFIG_FILE = "config.json"
 
 def load_config():
     defaults = {
         "port": 8000,
-        "user_name": "admin",
+        "user_name": "example",
         "user_pass": "1234",
         "impulse_duration": 2.0,
         "update_interval": 0.5,

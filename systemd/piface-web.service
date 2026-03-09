@@ -1,0 +1,21 @@
+[Unit]
+Description=PiFace Web Control Service
+After=network.target
+
+[Service]
+# Hier den absoluten Pfad zum Python-Interpreter und zum Skript angeben
+ExecStart=/usr/bin/python3 /usr/local/src/piFaceWebControl/main.py
+# Das Arbeitsverzeichnis (wo das Skript liegt)
+WorkingDirectory=/usr/local/src/piFaceWebControl
+# Automatischer Neustart bei Absturz
+Restart=always
+# Wartezeit vor dem Neustart (5 Sekunden)
+RestartSec=5
+# Benutzer, unter dem das Skript laufen soll
+User=pi
+# Standard-Output ins Systemlog (sichtbar mit journalctl)
+StandardOutput=inherit
+StandardError=inherit
+
+[Install]
+WantedBy=multi-user.target

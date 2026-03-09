@@ -1,6 +1,7 @@
 import sys
 import subprocess
 import urllib.request
+import ssl
 import http.server
 import urllib.parse
 import json
@@ -223,16 +224,24 @@ def execute_webhook(action_config):
     method = action_config.get('method', 'GET').upper()
     payload = action_config.get('payload')
     headers = action_config.get('headers', {'Content-Type': 'application/json'})
+    
+    # Check if SSL verification should be disabled for this webhook
+    verify_ssl = action_config.get("verify_ssl", True)
+    ssl_context = None
+    if not verify_ssl:
+        ssl_context = ssl._create_unverified_context()
+        log_event(f"WARNUNG: SSL-Verifizierung für Webhook an {url} ist deaktiviert.")
 
     log_event(f"System: Löse Webhook aus: {method} an {url}")
     try:
         data = json.dumps(payload).encode('utf-8') if payload and isinstance(payload, (dict, list)) else None
         req = urllib.request.Request(url, data=data, headers=headers, method=method)
-        with urllib.request.urlopen(req, timeout=10) as response:
+        with urllib.request.urlopen(req, timeout=10, context=ssl_context) as response:
             if 200 <= response.status < 300:
                 log_event(f"System: Webhook erfolgreich ausgelöst (Status: {response.status}).")
             else:
                 log_event(f"WARNUNG: Webhook-Antwort mit Fehlerstatus: {response.status}.")
+
     except Exception as e:
         log_event(f"FEHLER: Webhook konnte nicht ausgelöst werden: {e}")
 

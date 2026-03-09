@@ -8,7 +8,9 @@
         "7": "Gartenlicht"
     },
     "input_names": {
-        "0": "Klingel"
+        "0": "Türöffner",
+        "2": "Klingel",
+        "3": "HA Event"
     },
     "input_actions": {
         "0": [
@@ -31,13 +33,20 @@
         "2": [
             {
                 "type": "webhook",
-                "url": "https://api.beispiel.de/benachrichtigung",
+                "url": "https://api.telegram.org/bot<DEIN_BOT_TOKEN>/sendMessage",
                 "method": "POST",
-                "payload": { "ereignis": "Es hat geklingelt!" }
-            },
+                "payload": {
+                    "chat_id": "<DEINE_CHAT_ID>",
+                    "text": "🔔 Es hat an der Haustür geklingelt!"
+                }
+            }
+        ],
+        "3": [
             {
                 "type": "webhook",
-                "url": "https://ha.local/api/klingel_event"
+                "url": "https://homeassistant.local:8123/api/webhook/some_hook_id",
+                "method": "POST",
+                "verify_ssl": false
             }
         ]
     },

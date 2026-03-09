@@ -110,9 +110,10 @@ UI_TEMPLATE = """
             var outName = (i in outputNames) ? outputNames[i] : 'OUT ' + i;
             document.getElementById('out-grid').innerHTML += '<div id="out-'+i+'" class="pin clickable" onclick="sendTrigger('+i+')">'+outName+'</div>';
             var inName = (i in inputNames) ? inputNames[i] : 'IN ' + i;
-            document.getElementById('in-grid').innerHTML += '<div id="in-'+i+'" class="pin">'+inName+'</div>';
+            document.getElementById('in-grid').innerHTML += '<div id="in-'+i+'" class="pin clickable" onclick="simulateInput('+i+')">'+inName+'</div>';
         }}
         function sendTrigger(bit) {{ fetch('/set?bit=' + bit); }}
+        function simulateInput(bit) {{ fetch('/simulate_input?bit=' + bit); }}
         function fetchStatus() {{
             fetch('/status').then(r => r.json()).then(data => {{
                 for(var i=0; i<8; i++) {{
@@ -135,6 +136,7 @@ UI_TEMPLATE = """
 
 class PiFaceWebHandler(http.server.BaseHTTPRequestHandler):
     pifacedigital = None
+    simulated_output_state = 0
     def log_message(self, format, *args): return
 
     def check_auth(self):
@@ -151,7 +153,7 @@ class PiFaceWebHandler(http.server.BaseHTTPRequestHandler):
         if not self.check_auth(): return
         if self.path == "/status":
             in_val = self.pifacedigital.input_port.value if self.pifacedigital else 0
-            out_val = self.pifacedigital.output_port.value if self.pifacedigital else 0
+            out_val = self.pifacedigital.output_port.value if self.pifacedigital else PiFaceWebHandler.simulated_output_state
             self.send_response(200)
             self.send_header("Content-type", "application/json")
             self.end_headers()
@@ -159,6 +161,11 @@ class PiFaceWebHandler(http.server.BaseHTTPRequestHandler):
         elif self.path.startswith("/set"):
             bit = int(urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)["bit"][0])
             log_event(f"Web-UI: Befehl EIN für {get_output_name(bit)} empfangen.")
+            threading.Thread(target=trigger_impulse, args=(bit,)).start()
+            self.send_response(200); self.end_headers()
+        elif self.path.startswith("/simulate_input"):
+            bit = int(urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)["bit"][0])
+            log_event(f"Web-UI: Simulation für {get_input_name(bit)} empfangen.")
             threading.Thread(target=trigger_impulse, args=(bit,)).start()
             self.send_response(200); self.end_headers()
         else:
@@ -174,11 +181,18 @@ class PiFaceWebHandler(http.server.BaseHTTPRequestHandler):
             ).encode())
 
 def trigger_impulse(bit):
-    if not PiFaceWebHandler.pifacedigital: return
-    PiFaceWebHandler.pifacedigital.output_pins[bit].turn_on()
-    time.sleep(cfg['impulse_duration'])
-    PiFaceWebHandler.pifacedigital.output_pins[bit].turn_off()
-    log_event(f"System: {get_output_name(bit)} nach {cfg['impulse_duration']}s automatisch AUS.")
+    if PiFaceWebHandler.pifacedigital:
+        PiFaceWebHandler.pifacedigital.output_pins[bit].turn_on()
+        time.sleep(cfg['impulse_duration'])
+        PiFaceWebHandler.pifacedigital.output_pins[bit].turn_off()
+        log_event(f"System: {get_output_name(bit)} nach {cfg['impulse_duration']}s automatisch AUS.")
+    else:
+        # Simulation logic
+        log_event(f"Simulation: {get_output_name(bit)} EIN.")
+        PiFaceWebHandler.simulated_output_state |= (1 << bit)
+        time.sleep(cfg['impulse_duration'])
+        PiFaceWebHandler.simulated_output_state &= ~(1 << bit)
+        log_event(f"Simulation: {get_output_name(bit)} nach {cfg['impulse_duration']}s automatisch AUS.")
 
 def input_monitor():
     if not PiFaceWebHandler.pifacedigital: return

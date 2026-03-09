@@ -2,6 +2,14 @@
     "port": 8000,
     "user_name": "example",
     "user_pass": "changeMeToaBetterPassord",
+    "output_names": {
+        "0": "Haustür",
+        "1": "Garagentor",
+        "7": "Gartenlicht"
+    },
+    "input_names": {
+        "0": "Klingel"
+    },
     "impulse_duration": 2.0,
     "update_interval": 0.5,
     "log_file": "piface.log",

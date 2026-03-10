@@ -331,7 +331,15 @@ def execute_webhook(action_config, context=None):
             log_event(f"System: Antwort des Webhooks im Kontext als '{key}' gespeichert ({len(response.content)} bytes).")
 
     except Exception as e:
-        log_event(f"FEHLER: Webhook konnte nicht ausgelöst werden: {e}")
+        error_message = f"FEHLER: Webhook konnte nicht ausgelöst werden: {e}"
+        # Check if the exception has a 'response' attribute (like requests.HTTPError)
+        if hasattr(e, 'response') and e.response is not None:
+            try:
+                # Try to append the server's response body for more details
+                error_message += f" | Server-Antwort: {e.response.text}"
+            except:
+                pass # Ignore if we can't get the text
+        log_event(error_message)
 
 def _execute_single_action(action, input_name, action_desc, context):
     action_type = action.get('type')

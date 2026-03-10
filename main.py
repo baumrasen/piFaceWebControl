@@ -148,7 +148,7 @@ UI_TEMPLATE = """
             defaultExcludes.forEach(filter => {{
                 filterContainer.innerHTML += `
                     <label class="filter-label">
-                        <input type="checkbox" class="filter-checkbox" value="${filter}" onchange="fetchStatus()" checked>
+                        <input type="checkbox" class="filter-checkbox" value="${{filter}}" onchange="fetchStatus()" checked>
                         ${{filter}}
                     </label>
                 `;

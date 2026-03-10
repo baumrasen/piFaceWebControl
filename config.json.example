@@ -12,7 +12,8 @@
         "2": "Klingel",
         "3": "HA Event",
         "4": "API Trigger",
-        "5": "Workflow"
+        "5": "Workflow",
+        "6": "Katzenbild"
     },
     "input_actions": {
         "0": [
@@ -87,6 +88,30 @@
                 "type": "output",
                 "target": 1,
                 "mode": "toggle"
+            }
+        ],
+        "6": [
+            {
+                "type": "webhook",
+                "url": "https://cataas.com/cat",
+                "method": "GET",
+                "sequence_tag": "cat_telegram_flow",
+                "store_response_as": "cat_image_data"
+            },
+            {
+                "type": "webhook",
+                "url": "https://api.telegram.org/bot<DEIN_BOT_TOKEN>/sendPhoto",
+                "method": "POST",
+                "sequence_tag": "cat_telegram_flow",
+                "payload": {
+                    "chat_id": "<DEINE_CHAT_ID>",
+                    "caption": "Hier ist ein zufälliges Katzenbild!"
+                },
+                "attach_from_context": {
+                    "form_field_name": "photo",
+                    "context_variable": "cat_image_data",
+                    "filename": "cat.jpg"
+                }
             }
         ]
     },

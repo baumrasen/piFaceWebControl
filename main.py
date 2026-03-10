@@ -1,6 +1,7 @@
 import sys
 import subprocess
 import urllib.request
+import requests
 import ssl
 import http.server
 import urllib.parse
@@ -268,37 +269,71 @@ def execute_toggle(bit):
             PiFaceWebHandler.simulated_output_state |= (1 << bit)
             log_event(f"Simulation: {output_name} umgeschaltet auf EIN.")
 
-def execute_webhook(action_config):
+def execute_webhook(action_config, context=None):
+    if context is None:
+        context = {}
+
     url = action_config.get('url')
     if not url:
         log_event("WARNUNG: Webhook-Aktion ohne URL konfiguriert.")
         return
 
     method = action_config.get('method', 'GET').upper()
-    payload = action_config.get('payload')
     headers = action_config.get('headers', {'Content-Type': 'application/json'})
     
     # Check if SSL verification should be disabled for this webhook
     verify_ssl = action_config.get("verify_ssl", True)
-    ssl_context = None
+    timeout = action_config.get("timeout", 10)
+
     if not verify_ssl:
-        ssl_context = ssl._create_unverified_context()
         log_event(f"WARNUNG: SSL-Verifizierung für Webhook an {url} ist deaktiviert.")
 
     log_event(f"System: Löse Webhook aus: {method} an {url}")
     try:
-        data = json.dumps(payload).encode('utf-8') if payload and isinstance(payload, (dict, list)) else None
-        req = urllib.request.Request(url, data=data, headers=headers, method=method)
-        with urllib.request.urlopen(req, timeout=10, context=ssl_context) as response:
-            if 200 <= response.status < 300:
-                log_event(f"System: Webhook erfolgreich ausgelöst (Status: {response.status}).")
-            else:
-                log_event(f"WARNUNG: Webhook-Antwort mit Fehlerstatus: {response.status}.")
+        request_args = {
+            "method": method,
+            "url": url,
+            "headers": headers,
+            "verify": verify_ssl,
+            "timeout": timeout
+        }
+
+        payload = action_config.get('payload')
+        attachment_config = action_config.get('attach_from_context')
+
+        if attachment_config:
+            # Multipart request (file upload)
+            context_var = attachment_config.get('context_variable')
+            if context_var not in context:
+                log_event(f"FEHLER: Variable '{context_var}' für Dateianhang nicht im Kontext gefunden.")
+                return
+
+            file_data = context[context_var]
+            form_field = attachment_config.get('form_field_name', 'file')
+            filename = attachment_config.get('filename', 'upload')
+            
+            request_args["files"] = {form_field: (filename, file_data)}
+            if payload:
+                request_args["data"] = payload
+        else:
+            # Standard request (e.g., JSON)
+            if payload:
+                request_args["json"] = payload
+
+        response = requests.request(**request_args)
+        response.raise_for_status()  # Raise an exception for bad status codes (4xx or 5xx)
+
+        log_event(f"System: Webhook erfolgreich ausgelöst (Status: {response.status_code}).")
+
+        if action_config.get("store_response_as"):
+            key = action_config["store_response_as"]
+            context[key] = response.content
+            log_event(f"System: Antwort des Webhooks im Kontext als '{key}' gespeichert ({len(response.content)} bytes).")
 
     except Exception as e:
         log_event(f"FEHLER: Webhook konnte nicht ausgelöst werden: {e}")
 
-def _execute_single_action(action, input_name, action_desc):
+def _execute_single_action(action, input_name, action_desc, context):
     action_type = action.get('type')
     log_event(f"System: Führe {action_desc} aus (Typ: {action_type}) für {input_name}.")
 
@@ -314,7 +349,7 @@ def _execute_single_action(action, input_name, action_desc):
         elif mode == 'toggle':
             execute_toggle(target)
     elif action_type == 'webhook':
-        execute_webhook(action)
+        execute_webhook(action, context)
     elif action_type == 'delay':
         duration = action.get('duration')
         if duration and isinstance(duration, (int, float)) and duration > 0:
@@ -354,13 +389,15 @@ def process_input_event(bit):
     # This function will be the target for our threads. It runs a sequence of actions.
     def _run_sequence(actions_list, tag, input_name):
         log_event(f"System: Starte sequentielle Ausführung für Gruppe '{tag}'.")
+        context = {}  # Context is local to the sequence
         for i, action in enumerate(actions_list):
             action_desc = f"Aktion (Gruppe '{tag}', Schritt {i+1}/{len(actions_list)})"
-            _execute_single_action(action, input_name, action_desc)
+            _execute_single_action(action, input_name, action_desc, context)
 
     # Start parallel actions
     for action in parallel_actions:
-        threading.Thread(target=_execute_single_action, args=(action, input_name, "parallele Aktion")).start()
+        # Each parallel action gets its own empty context, which is not used but keeps the signature consistent.
+        threading.Thread(target=_execute_single_action, args=(action, input_name, "parallele Aktion", {})).start()
 
     # Start sequential groups
     for tag, actions_list in sequential_groups.items():

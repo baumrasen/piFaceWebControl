@@ -27,7 +27,11 @@ def load_config():
         "input_names": {},
         "input_actions": {},
         "heartbeat_url": None,
-        "heartbeat_interval": 60
+        "heartbeat_interval": 60,
+        "log_filter_exclude": [
+            "Heartbeat",
+            "SSL-Verifizierung"
+        ]
     }
     if os.path.exists(CONFIG_FILE):
         try:
@@ -64,7 +68,18 @@ def get_last_logs(n=20):
     try:
         with open(cfg['log_file'], "r") as f:
             lines = f.readlines()
-            return [line.strip() for line in lines[-n:]]
+
+        exclude_list = cfg.get('log_filter_exclude', [])
+        if exclude_list:
+            # Filter lines that contain any of the exclude strings
+            filtered_lines = [
+                line for line in lines
+                if not any(exclude_str in line for exclude_str in exclude_list)
+            ]
+        else:
+            filtered_lines = lines
+
+        return [line.strip() for line in filtered_lines[-n:]]
     except:
         return ["Fehler beim Lesen der Log-Datei."]
 

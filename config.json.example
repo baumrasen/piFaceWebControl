@@ -68,6 +68,10 @@
     "log_file": "piface.log",
     "log_history_size": 50,
 
+    "log_filter_exclude": [
+        "Heartbeat",
+        "SSL-Verifizierung"
+    ],
     "heartbeat_url": null,
     "heartbeat_interval": 60
 }

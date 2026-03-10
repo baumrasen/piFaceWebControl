@@ -62,19 +62,20 @@ def log_event(message):
     except Exception as e:
         print(f"Fehler beim Schreiben ins Log: {e}")
 
-def get_last_logs(n=20):
+def get_last_logs(n=20, exclude_list=None):
     if not os.path.exists(cfg['log_file']):
         return ["Keine Log-Einträge vorhanden."]
     try:
         with open(cfg['log_file'], "r") as f:
             lines = f.readlines()
 
-        exclude_list = cfg.get('log_filter_exclude', [])
-        if exclude_list:
+        # Use the passed exclude_list. If None, use the config default.
+        current_excludes = exclude_list if exclude_list is not None else cfg.get('log_filter_exclude', [])
+        if current_excludes:
             # Filter lines that contain any of the exclude strings
             filtered_lines = [
                 line for line in lines
-                if not any(exclude_str in line for exclude_str in exclude_list)
+                if not any(exclude_str in line for exclude_str in current_excludes)
             ]
         else:
             filtered_lines = lines
@@ -110,6 +111,9 @@ UI_TEMPLATE = """
         .log-entry {{ border-bottom: 1px solid #333; padding: 6px 0; font-size: 0.8rem; color: #aaa; }}
         .log-highlight {{ color: #ff9800 !important; font-weight: bold !important; }}
         .log-warn {{ color: #ff4444 !important; font-weight: bold !important; background: rgba(255,0,0,0.1); }}
+        .filter-grid { display: flex; flex-wrap: wrap; gap: 15px; justify-content: center; margin-bottom: 20px; }
+        .filter-label { display: flex; align-items: center; gap: 5px; background: #f1f3f4; padding: 5px 10px; border-radius: 16px; font-size: 0.9rem; cursor: pointer; user-select: none; }
+        .filter-checkbox { accent-color: #34a853; }
         #info {{ margin-top: 20px; font-size: 0.8rem; color: #9aa0a6; }}
     </style>
 </head>
@@ -120,22 +124,49 @@ UI_TEMPLATE = """
         <div class="grid" id="out-grid"></div>
         <div class="grid" id="in-grid"></div>
         <div id="log-container">Lade Logbuch...</div>
+        <h2 id="log-filter-title" style="display: none;">Log-Filter</h2>
+        <div id="filter-controls" class="filter-grid"></div>
         <p id="info">Initialisiere...</p>
     </div>
     <script>
         var outputNames = {output_names_json};
         var inputNames = {input_names_json};
+        var defaultExcludes = {log_filter_json};
         var logContainer = document.getElementById('log-container');
+        var filterContainer = document.getElementById('filter-controls');
+
         for(var i=0; i<8; i++) {{
             var outName = (i in outputNames) ? outputNames[i] : 'OUT ' + i;
             document.getElementById('out-grid').innerHTML += '<div id="out-'+i+'" class="pin clickable" onclick="sendTrigger('+i+')">'+outName+'</div>';
             var inName = (i in inputNames) ? inputNames[i] : 'IN ' + i;
             document.getElementById('in-grid').innerHTML += '<div id="in-'+i+'" class="pin clickable" onclick="simulateInput('+i+')">'+inName+'</div>';
         }}
+
+        // Build filter UI
+        if (defaultExcludes.length > 0) {{
+            document.getElementById('log-filter-title').style.display = 'block';
+            defaultExcludes.forEach(filter => {{
+                filterContainer.innerHTML += `
+                    <label class="filter-label">
+                        <input type="checkbox" class="filter-checkbox" value="${filter}" onchange="fetchStatus()" checked>
+                        ${{filter}}
+                    </label>
+                `;
+            }});
+        }}
+
+        function getFilterQuery() {{
+            var query = [];
+            document.querySelectorAll('.filter-checkbox:checked').forEach(cb => {{
+                query.push('exclude=' + encodeURIComponent(cb.value));
+            }});
+            return query.length > 0 ? '?' + query.join('&') : '';
+        }}
+
         function sendTrigger(bit) {{ fetch('/set?bit=' + bit); }}
         function simulateInput(bit) {{ fetch('/simulate_input?bit=' + bit); }}
         function fetchStatus() {{
-            fetch('/status').then(r => r.json()).then(data => {{
+            fetch('/status' + getFilterQuery()).then(r => r.json()).then(data => {{
                 for(var i=0; i<8; i++) {{
                     document.getElementById('out-'+i).className = (data.output>>i)&1 ? 'pin clickable on' : 'pin clickable';
                     document.getElementById('in-'+i).className = (data.input>>i)&1 ? 'pin on' : 'pin';
@@ -171,13 +202,17 @@ class PiFaceWebHandler(http.server.BaseHTTPRequestHandler):
 
     def do_GET(self):
         if not self.check_auth(): return
-        if self.path == "/status":
+        if self.path.startswith("/status"):
+            parsed_path = urllib.parse.urlparse(self.path)
+            query_params = urllib.parse.parse_qs(parsed_path.query)
+            exclude_list = query_params.get('exclude', [])
+
             in_val = self.pifacedigital.input_port.value if self.pifacedigital else 0
             out_val = self.pifacedigital.output_port.value if self.pifacedigital else PiFaceWebHandler.simulated_output_state
             self.send_response(200)
             self.send_header("Content-type", "application/json")
             self.end_headers()
-            self.wfile.write(json.dumps({"input":in_val,"output":out_val,"ip":get_my_ip(),"logs":get_last_logs(cfg['log_history_size'])}).encode())
+            self.wfile.write(json.dumps({"input":in_val,"output":out_val,"ip":get_my_ip(),"logs":get_last_logs(cfg['log_history_size'], exclude_list=exclude_list)}).encode())
         elif self.path.startswith("/set"):
             bit = int(urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)["bit"][0])
             log_event(f"Web-UI: Befehl EIN für {get_output_name(bit)} empfangen.")
@@ -197,7 +232,8 @@ class PiFaceWebHandler(http.server.BaseHTTPRequestHandler):
                 error_display="none" if self.pifacedigital else "block",
                 update_ms=int(cfg['update_interval']*1000),
                 output_names_json=json.dumps(cfg.get('output_names', {})),
-                input_names_json=json.dumps(cfg.get('input_names', {}))
+                input_names_json=json.dumps(cfg.get('input_names', {})),
+                log_filter_json=json.dumps(cfg.get('log_filter_exclude', []))
             ).encode())
 
 def execute_impulse(bit, duration=None):

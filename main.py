@@ -279,7 +279,7 @@ def execute_webhook(action_config, context=None):
         return
 
     method = action_config.get('method', 'GET').upper()
-    headers = action_config.get('headers', {'Content-Type': 'application/json'})
+    headers = action_config.get('headers', {})
     
     # Check if SSL verification should be disabled for this webhook
     verify_ssl = action_config.get("verify_ssl", True)
@@ -314,10 +314,12 @@ def execute_webhook(action_config, context=None):
             
             request_args["files"] = {form_field: (filename, file_data)}
             if payload:
+                # For multipart, payload fields go into 'data'
                 request_args["data"] = payload
         else:
-            # Standard request (e.g., JSON)
+            # Standard request
             if payload:
+                # The 'json' parameter handles JSON serialization and sets the correct Content-Type header.
                 request_args["json"] = payload
 
         response = requests.request(**request_args)

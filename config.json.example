@@ -11,7 +11,8 @@
         "0": "Türöffner",
         "2": "Klingel",
         "3": "HA Event",
-        "4": "API Trigger"
+        "4": "API Trigger",
+        "5": "Workflow"
     },
     "input_actions": {
         "0": [
@@ -40,6 +41,10 @@
                     "chat_id": "<DEINE_CHAT_ID>",
                     "text": "🔔 Es hat an der Haustür geklingelt!"
                 }
+            },
+            {
+                "type": "delay",
+                "duration": 5
             }
         ],
         "3": [
@@ -60,6 +65,28 @@
                     "Content-Type": "application/json"
                 },
                 "payload": { "event": "trigger_from_piface" }
+            }
+        ],
+        "5": [
+            {
+                "type": "webhook",
+                "url": "https://service.one/start",
+                "sequence_tag": "workflow_A"
+            },
+            {
+                "type": "delay",
+                "duration": 5,
+                "sequence_tag": "workflow_A"
+            },
+            {
+                "type": "webhook",
+                "url": "https://service.one/end",
+                "sequence_tag": "workflow_A"
+            },
+            {
+                "type": "output",
+                "target": 1,
+                "mode": "toggle"
             }
         ]
     },

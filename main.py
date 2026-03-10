@@ -298,6 +298,33 @@ def execute_webhook(action_config):
     except Exception as e:
         log_event(f"FEHLER: Webhook konnte nicht ausgelöst werden: {e}")
 
+def _execute_single_action(action, input_name, action_desc):
+    action_type = action.get('type')
+    log_event(f"System: Führe {action_desc} aus (Typ: {action_type}) für {input_name}.")
+
+    if action_type == 'output':
+        target = action.get('target')
+        mode = action.get('mode', 'impulse')
+        if target is None:
+            log_event(f"WARNUNG: Fehlende 'target' Konfiguration für {action_desc} von {input_name}.")
+            return
+        if mode == 'impulse':
+            duration = action.get('duration')
+            execute_impulse(target, duration)
+        elif mode == 'toggle':
+            execute_toggle(target)
+    elif action_type == 'webhook':
+        execute_webhook(action)
+    elif action_type == 'delay':
+        duration = action.get('duration')
+        if duration and isinstance(duration, (int, float)) and duration > 0:
+            log_event(f"System: Warte für {duration} Sekunden...")
+            time.sleep(duration)
+        else:
+            log_event(f"WARNUNG: Ungültige 'duration' für {action_desc} von {input_name}.")
+    else:
+        log_event(f"WARNUNG: Unbekannter Aktionstyp '{action_type}' für {action_desc} von {input_name}.")
+
 def process_input_event(bit):
     action_config = cfg.get('input_actions', {}).get(str(bit))
     input_name = get_input_name(bit)
@@ -307,30 +334,37 @@ def process_input_event(bit):
         execute_impulse(bit)
         return
 
-    # Make sure we have a list to iterate over, for single actions and multiple actions
     actions = action_config if isinstance(action_config, list) else [action_config]
 
-    log_event(f"System: {input_name} hat {len(actions)} Aktion(en) ausgelöst.")
+    # Group actions by sequence_tag
+    sequential_groups = {}
+    parallel_actions = []
 
-    for i, action in enumerate(actions):
-        action_type = action.get('type')
-
-        # Start each action in a new thread to run them in parallel
-        if action_type == 'output':
-            target = action.get('target')
-            mode = action.get('mode', 'impulse')
-            if target is None:
-                log_event(f"WARNUNG: Fehlende 'target' Konfiguration für Aktion {i+1} von {input_name}.")
-                continue
-            if mode == 'impulse':
-                duration = action.get('duration')
-                threading.Thread(target=execute_impulse, args=(target, duration)).start()
-            elif mode == 'toggle':
-                threading.Thread(target=execute_toggle, args=(target,)).start()
-        elif action_type == 'webhook':
-            threading.Thread(target=execute_webhook, args=(action,)).start()
+    for action in actions:
+        tag = action.get('sequence_tag')
+        if tag:
+            if tag not in sequential_groups:
+                sequential_groups[tag] = []
+            sequential_groups[tag].append(action)
         else:
-            log_event(f"WARNUNG: Unbekannter Aktionstyp '{action_type}' für {input_name} in Aktion {i+1}.")
+            parallel_actions.append(action)
+
+    log_event(f"System: {input_name} hat {len(sequential_groups)} sequentielle Gruppe(n) und {len(parallel_actions)} parallele Aktion(en) ausgelöst.")
+
+    # This function will be the target for our threads. It runs a sequence of actions.
+    def _run_sequence(actions_list, tag, input_name):
+        log_event(f"System: Starte sequentielle Ausführung für Gruppe '{tag}'.")
+        for i, action in enumerate(actions_list):
+            action_desc = f"Aktion (Gruppe '{tag}', Schritt {i+1}/{len(actions_list)})"
+            _execute_single_action(action, input_name, action_desc)
+
+    # Start parallel actions
+    for action in parallel_actions:
+        threading.Thread(target=_execute_single_action, args=(action, input_name, "parallele Aktion")).start()
+
+    # Start sequential groups
+    for tag, actions_list in sequential_groups.items():
+        threading.Thread(target=_run_sequence, args=(actions_list, tag, input_name)).start()
 
 def input_monitor():
     if not PiFaceWebHandler.pifacedigital: return

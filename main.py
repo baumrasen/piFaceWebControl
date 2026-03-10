@@ -111,9 +111,9 @@ UI_TEMPLATE = """
         .log-entry {{ border-bottom: 1px solid #333; padding: 6px 0; font-size: 0.8rem; color: #aaa; }}
         .log-highlight {{ color: #ff9800 !important; font-weight: bold !important; }}
         .log-warn {{ color: #ff4444 !important; font-weight: bold !important; background: rgba(255,0,0,0.1); }}
-        .filter-grid { display: flex; flex-wrap: wrap; gap: 15px; justify-content: center; margin-bottom: 20px; }
-        .filter-label { display: flex; align-items: center; gap: 5px; background: #f1f3f4; padding: 5px 10px; border-radius: 16px; font-size: 0.9rem; cursor: pointer; user-select: none; }
-        .filter-checkbox { accent-color: #34a853; }
+        .filter-grid {{ display: flex; flex-wrap: wrap; gap: 15px; justify-content: center; margin-bottom: 20px; }}
+        .filter-label {{ display: flex; align-items: center; gap: 5px; background: #f1f3f4; padding: 5px 10px; border-radius: 16px; font-size: 0.9rem; cursor: pointer; user-select: none; }}
+        .filter-checkbox {{ accent-color: #34a853; }}
         #info {{ margin-top: 20px; font-size: 0.8rem; color: #9aa0a6; }}
     </style>
 </head>

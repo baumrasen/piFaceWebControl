@@ -227,7 +227,7 @@ class PiFaceWebHandler(http.server.BaseHTTPRequestHandler):
             return
 
     def do_GET(self):
-        if self.path == "/":
+        if self.path == "/health":
             client_status = "Disconnected"
             try:
                 r = requests.get(

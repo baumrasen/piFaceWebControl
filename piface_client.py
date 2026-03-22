@@ -15,7 +15,8 @@ def load_config():
         "server_url": "http://127.0.0.1:8000",
         "shared_api_key": "changeMe",
         "update_interval": 0.05,
-        "log_file": "client.log"
+        "log_file": "client.log",
+        "connection_check_interval": 60
     }
     if os.path.exists(CONFIG_FILE):
         try:
@@ -89,6 +90,30 @@ class PiFaceClientHandler(http.server.BaseHTTPRequestHandler):
         time.sleep(duration)
         pifacedigital.output_pins[pin].turn_off()
 
+def connection_monitor():
+    url = f"{cfg['server_url']}/"
+    interval = cfg.get('connection_check_interval', 60)
+    log_event(f"Verbindungs-Monitor gestartet (Intervall: {interval}s). Prüfe {url}")
+    
+    last_server_ok = True
+    
+    while True:
+        server_ok = False
+        try:
+            requests.get(url, timeout=5)
+            server_ok = True
+        except Exception:
+            pass
+            
+        if server_ok != last_server_ok:
+            if server_ok:
+                log_event("INFO: Verbindung zum Server wiederhergestellt.")
+            else:
+                log_event("WARNUNG: Verbindung zum Server unterbrochen!")
+            last_server_ok = server_ok
+            
+        time.sleep(interval)
+
 def input_monitor():
     last_state = 0
     server_url = f"{cfg['server_url']}/api/input"
@@ -120,6 +145,7 @@ if __name__ == "__main__":
     try:
         # Start Input Monitor in background
         threading.Thread(target=input_monitor, daemon=True).start()
+        threading.Thread(target=connection_monitor, daemon=True).start()
         
         log_event(f"PiFace Client gestartet auf Port {cfg['port']}")
         http.server.HTTPServer(('', cfg['port']), PiFaceClientHandler).serve_forever()

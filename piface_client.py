@@ -62,6 +62,22 @@ class PiFaceClientHandler(http.server.BaseHTTPRequestHandler):
             self.send_header("Content-type", "application/json")
             self.end_headers()
             self.wfile.write(json.dumps({"input": in_val, "output": out_val}).encode())
+            return
+
+        if self.path == "/logs":
+            if self.headers.get('X-API-KEY') != cfg['shared_api_key']:
+                self.send_response(403); self.end_headers(); return
+
+            logs = []
+            try:
+                if os.path.exists(cfg['log_file']):
+                    with open(cfg['log_file'], "r") as f:
+                        logs = [line.strip() for line in f.readlines()[-50:]]
+            except Exception as e:
+                logs = [f"Fehler beim Lesen des Logs: {e}"]
+
+            self.send_response(200); self.send_header("Content-type", "application/json"); self.end_headers()
+            self.wfile.write(json.dumps({"logs": logs}).encode())
         else:
             self.send_response(404); self.end_headers()
 

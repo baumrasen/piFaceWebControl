@@ -108,7 +108,7 @@ UI_TEMPLATE = """
         .pin {{ padding: 15px 5px; border: 2px solid #e8eaed; border-radius: 12px; font-weight: bold; transition: all 0.2s ease; background: #fff; color: #5f6368; }}
         .clickable {{ cursor: pointer; border-color: #dadce0; color: #3c4043; }}
         .on {{ background: #34a853 !important; color: white !important; border-color: #1e8e3e !important; }}
-        #log-container {{ text-align: left; background: #1e1e1e; color: #d4d4d4; padding: 15px; border-radius: 8px; font-family: 'Courier New', monospace; font-size: 0.85rem; height: 200px; overflow-y: auto; }}
+        .log-box {{ text-align: left; background: #1e1e1e; color: #d4d4d4; padding: 15px; border-radius: 8px; font-family: 'Courier New', monospace; font-size: 0.85rem; height: 200px; overflow-y: auto; margin-bottom: 20px; }}
         .log-entry {{ border-bottom: 1px solid #333; padding: 6px 0; font-size: 0.8rem; color: #aaa; }}
         .log-highlight {{ color: #ff9800 !important; font-weight: bold !important; }}
         .log-warn {{ color: #ff4444 !important; font-weight: bold !important; background: rgba(255,0,0,0.1); }}
@@ -124,7 +124,10 @@ UI_TEMPLATE = """
         <div class="status-error">Hardware-Fehler: PiFace nicht erkannt!</div>
         <div class="grid" id="out-grid"></div>
         <div class="grid" id="in-grid"></div>
-        <div id="log-container">Lade Logbuch...</div>
+        <h3 style="text-align: left; margin: 0 0 5px 0; color: #555;">Server Log</h3>
+        <div id="log-container" class="log-box">Lade Server-Log...</div>
+        <h3 style="text-align: left; margin: 0 0 5px 0; color: #555;">Client Log (Raspberry Pi)</h3>
+        <div id="client-log-container" class="log-box">Lade Client-Log...</div>
         <h2 id="log-filter-title" style="display: none;">Log-Filter</h2>
         <div id="filter-controls" class="filter-grid"></div>
         <p id="info">Initialisiere...</p>
@@ -134,6 +137,7 @@ UI_TEMPLATE = """
         var inputNames = {input_names_json};
         var defaultExcludes = {log_filter_json};
         var logContainer = document.getElementById('log-container');
+        var clientLogContainer = document.getElementById('client-log-container');
         var filterContainer = document.getElementById('filter-controls');
 
         for(var i=0; i<8; i++) {{
@@ -173,6 +177,10 @@ UI_TEMPLATE = """
                     document.getElementById('in-'+i).className = (data.input>>i)&1 ? 'pin on' : 'pin';
                 }}
                 logContainer.innerHTML = data.logs.reverse().map(l => {{
+                    var cl = "log-entry" + (l.includes(" EIN")?" log-highlight":"") + (l.includes("WARNUNG")?" log-warn":"");
+                    return '<div class="'+cl+'">'+l+'</div>';
+                }}).join('');
+                clientLogContainer.innerHTML = (data.client_logs || []).reverse().map(l => {{
                     var cl = "log-entry" + (l.includes(" EIN")?" log-highlight":"") + (l.includes("WARNUNG")?" log-warn":"");
                     return '<div class="'+cl+'">'+l+'</div>';
                 }}).join('');
@@ -256,6 +264,7 @@ class PiFaceWebHandler(http.server.BaseHTTPRequestHandler):
             in_val = 0
             out_val = PiFaceWebHandler.simulated_output_state
             client_ok = False
+            client_logs = []
             
             try:
                 r = requests.get(
@@ -268,6 +277,21 @@ class PiFaceWebHandler(http.server.BaseHTTPRequestHandler):
                     in_val = data.get('input', 0)
                     out_val = data.get('output', 0)
                     client_ok = True
+
+                # Logs separat abrufen
+                if client_ok:
+                    r_logs = requests.get(
+                        f"{cfg['piface_client_url']}/logs",
+                        headers={"X-API-KEY": cfg['shared_api_key']},
+                        timeout=1
+                    )
+                    if r_logs.status_code == 200:
+                        raw_logs = r_logs.json().get('logs', [])
+                        # Filter anwenden
+                        if exclude_list:
+                            client_logs = [l for l in raw_logs if not any(x in l for x in exclude_list)]
+                        else:
+                            client_logs = raw_logs
             except Exception:
                 # Client nicht erreichbar, behalte Standardwerte oder Simulation
                 pass
@@ -275,7 +299,7 @@ class PiFaceWebHandler(http.server.BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-type", "application/json")
             self.end_headers()
-            self.wfile.write(json.dumps({"input":in_val,"output":out_val,"ip":get_my_ip(),"client_ok":client_ok,"logs":get_last_logs(cfg['log_history_size'], exclude_list=exclude_list)}).encode())
+            self.wfile.write(json.dumps({"input":in_val,"output":out_val,"ip":get_my_ip(),"client_ok":client_ok,"logs":get_last_logs(cfg['log_history_size'], exclude_list=exclude_list),"client_logs":client_logs}).encode())
         elif self.path.startswith("/set"):
             bit = int(urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)["bit"][0])
             log_event(f"Web-UI: Befehl EIN für {get_output_name(bit)} empfangen.")

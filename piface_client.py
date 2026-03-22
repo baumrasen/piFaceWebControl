@@ -125,5 +125,7 @@ if __name__ == "__main__":
         http.server.HTTPServer(('', cfg['port']), PiFaceClientHandler).serve_forever()
     except KeyboardInterrupt:
         pass
+    except PermissionError:
+        log_event(f"Fataler Fehler: Zugriff auf Port {cfg['port']} verweigert. Für Ports < 1024 werden Root-Rechte benötigt (sudo).")
     except Exception as e:
         log_event(f"Fataler Fehler: {e}")

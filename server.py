@@ -227,6 +227,25 @@ class PiFaceWebHandler(http.server.BaseHTTPRequestHandler):
             return
 
     def do_GET(self):
+        if self.path == "/":
+            client_status = "Disconnected"
+            try:
+                r = requests.get(
+                    f"{cfg['piface_client_url']}/status", 
+                    headers={"X-API-KEY": cfg['shared_api_key']}, 
+                    timeout=1
+                )
+                if r.status_code == 200:
+                    client_status = "Connected"
+            except Exception:
+                pass
+            
+            self.send_response(200)
+            self.send_header("Content-type", "text/plain")
+            self.end_headers()
+            self.wfile.write(f"PiFace: {client_status}".encode())
+            return
+
         if not self.check_auth(): return
         if self.path.startswith("/status"):
             parsed_path = urllib.parse.urlparse(self.path)

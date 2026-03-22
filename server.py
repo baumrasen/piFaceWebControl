@@ -478,6 +478,8 @@ def heartbeat_monitor():
 
     log_event(f"Heartbeat-Monitor für {url} gestartet (Intervall: {interval}s).")
 
+    last_client_ok = True
+
     while True:
         # 1. Check: Ist der PiFace Client erreichbar?
         client_ok = False
@@ -492,6 +494,13 @@ def heartbeat_monitor():
         except Exception:
             pass # Fehlerbehandlung erfolgt durch das Auslassen des Heartbeats
         
+        if client_ok != last_client_ok:
+            if client_ok:
+                log_event("INFO: Verbindung zum PiFace Client wiederhergestellt.")
+            else:
+                log_event("WARNUNG: Verbindung zum PiFace Client unterbrochen!")
+            last_client_ok = client_ok
+
         # 2. Nur wenn Client OK ist, senden wir den Heartbeat an Kuma
         if client_ok:
             try:
@@ -500,8 +509,6 @@ def heartbeat_monitor():
                         log_event(f"WARNUNG: Heartbeat an {url} fehlgeschlagen (Status: {response.status}).")
             except Exception as e:
                 log_event(f"FEHLER: Heartbeat an {url} konnte nicht gesendet werden: {e}")
-        else:
-            log_event("WARNUNG: Heartbeat übersprungen - Verbindung zum PiFace Client unterbrochen!")
 
         time.sleep(interval)
 

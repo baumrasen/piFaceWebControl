@@ -41,6 +41,10 @@ def load_config():
                 config = json.load(f)
                 defaults.update(config)
                 print("Konfiguration erfolgreich geladen.")
+        except json.JSONDecodeError as e:
+            print(f"ACHTUNG: {CONFIG_FILE} enthält ungültiges JSON!")
+            print(f"Fehler in Zeile {e.lineno}, Spalte {e.colno}: {e.msg}")
+            print("HINWEIS: Es werden die Standardwerte verwendet.")
         except Exception as e:
             print(f"Fehler beim Laden der Config, nutze Defaults: {e}")
     return defaults

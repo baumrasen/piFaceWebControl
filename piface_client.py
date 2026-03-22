@@ -19,6 +19,8 @@ def load_config():
         try:
             with open(CONFIG_FILE, "r") as f:
                 defaults.update(json.load(f))
+        except json.JSONDecodeError as e:
+            print(f"Config Error: Invalid JSON in {CONFIG_FILE} at line {e.lineno}, col {e.colno}: {e.msg}")
         except Exception as e:
             print(f"Config Error: {e}")
     return defaults

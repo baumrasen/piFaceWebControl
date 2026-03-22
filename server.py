@@ -472,13 +472,30 @@ def heartbeat_monitor():
     log_event(f"Heartbeat-Monitor für {url} gestartet (Intervall: {interval}s).")
 
     while True:
+        # 1. Check: Ist der PiFace Client erreichbar?
+        client_ok = False
         try:
-            with urllib.request.urlopen(url, timeout=10) as response:
-                if not (200 <= response.status < 300):
-                    log_event(f"WARNUNG: Heartbeat an {url} fehlgeschlagen (Status: {response.status}).")
-        except Exception as e:
-            log_event(f"FEHLER: Heartbeat an {url} konnte nicht gesendet werden: {e}")
+            r = requests.get(
+                f"{cfg['piface_client_url']}/status",
+                headers={"X-API-KEY": cfg['shared_api_key']},
+                timeout=5
+            )
+            if r.status_code == 200:
+                client_ok = True
+        except Exception:
+            pass # Fehlerbehandlung erfolgt durch das Auslassen des Heartbeats
         
+        # 2. Nur wenn Client OK ist, senden wir den Heartbeat an Kuma
+        if client_ok:
+            try:
+                with urllib.request.urlopen(url, timeout=10) as response:
+                    if not (200 <= response.status < 300):
+                        log_event(f"WARNUNG: Heartbeat an {url} fehlgeschlagen (Status: {response.status}).")
+            except Exception as e:
+                log_event(f"FEHLER: Heartbeat an {url} konnte nicht gesendet werden: {e}")
+        else:
+            log_event("WARNUNG: Heartbeat übersprungen - Verbindung zum PiFace Client unterbrochen!")
+
         time.sleep(interval)
 
 if __name__ == "__main__":

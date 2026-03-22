@@ -12,7 +12,6 @@ import os
 import base64
 from datetime import datetime
 
-# --- Konfiguration laden ---
 CONFIG_FILE = "config.json"
 
 def load_config():
@@ -32,7 +31,9 @@ def load_config():
         "log_filter_exclude": [
             "Heartbeat",
             "SSL-Verifizierung"
-        ]
+        ],
+        "piface_client_url": "http://127.0.0.1:8001",
+        "shared_api_key": "changeMe"
     }
     if os.path.exists(CONFIG_FILE):
         try:
@@ -46,11 +47,6 @@ def load_config():
 
 cfg = load_config()
 AUTH_STR = base64.b64encode(f"{cfg['user_name']}:{cfg['user_pass']}".encode()).decode()
-
-try:
-    import pifacedigitalio
-except ImportError:
-    pifacedigitalio = None
 
 # --- Hilfsfunktionen ---
 def log_event(message):
@@ -187,7 +183,6 @@ UI_TEMPLATE = """
 """
 
 class PiFaceWebHandler(http.server.BaseHTTPRequestHandler):
-    pifacedigital = None
     simulated_output_state = 0
     def log_message(self, format, *args): return
 
@@ -201,6 +196,31 @@ class PiFaceWebHandler(http.server.BaseHTTPRequestHandler):
             return False
         return True
 
+    def do_POST(self):
+        # Endpunkt für Input-Events vom Raspberry Pi
+        if self.path == "/api/input":
+            key = self.headers.get('X-API-KEY')
+            if key != cfg['shared_api_key']:
+                self.send_response(403)
+                self.end_headers()
+                return
+            
+            content_length = int(self.headers.get('Content-Length', 0))
+            body = self.rfile.read(content_length)
+            try:
+                data = json.loads(body)
+                bit = data.get('pin')
+                state = data.get('state')
+                if bit is not None and state == 1:
+                    log_event(f"Hardware-Event: {get_input_name(bit)} EIN (via Client).")
+                    threading.Thread(target=process_input_event, args=(bit,)).start()
+                self.send_response(200)
+            except Exception as e:
+                log_event(f"Fehler beim Verarbeiten des Input-Events: {e}")
+                self.send_response(400)
+            self.end_headers()
+            return
+
     def do_GET(self):
         if not self.check_auth(): return
         if self.path.startswith("/status"):
@@ -208,8 +228,24 @@ class PiFaceWebHandler(http.server.BaseHTTPRequestHandler):
             query_params = urllib.parse.parse_qs(parsed_path.query)
             exclude_list = query_params.get('exclude', [])
 
-            in_val = self.pifacedigital.input_port.value if self.pifacedigital else 0
-            out_val = self.pifacedigital.output_port.value if self.pifacedigital else PiFaceWebHandler.simulated_output_state
+            # Status vom Client (Raspberry Pi) abfragen
+            in_val = 0
+            out_val = PiFaceWebHandler.simulated_output_state
+            
+            try:
+                r = requests.get(
+                    f"{cfg['piface_client_url']}/status", 
+                    headers={"X-API-KEY": cfg['shared_api_key']}, 
+                    timeout=1
+                )
+                if r.status_code == 200:
+                    data = r.json()
+                    in_val = data.get('input', 0)
+                    out_val = data.get('output', 0)
+            except Exception:
+                # Client nicht erreichbar, behalte Standardwerte oder Simulation
+                pass
+
             self.send_response(200)
             self.send_header("Content-type", "application/json")
             self.end_headers()
@@ -230,7 +266,7 @@ class PiFaceWebHandler(http.server.BaseHTTPRequestHandler):
             self.send_header("Content-type", "text/html")
             self.end_headers()
             self.wfile.write(UI_TEMPLATE.format(
-                error_display="none" if self.pifacedigital else "block",
+                error_display="none", # Fehleranzeige könnte man über Status-Check steuern
                 update_ms=int(cfg['update_interval']*1000),
                 output_names_json=json.dumps(cfg.get('output_names', {})),
                 input_names_json=json.dumps(cfg.get('input_names', {})),
@@ -240,26 +276,32 @@ class PiFaceWebHandler(http.server.BaseHTTPRequestHandler):
 def execute_impulse(bit, duration=None):
     actual_duration = duration if duration is not None else cfg['impulse_duration']
     output_name = get_output_name(bit)
-    if PiFaceWebHandler.pifacedigital:
-        PiFaceWebHandler.pifacedigital.output_pins[bit].turn_on()
-        time.sleep(actual_duration)
-        PiFaceWebHandler.pifacedigital.output_pins[bit].turn_off()
+    
+    try:
+        url = f"{cfg['piface_client_url']}/cmd"
+        payload = {"action": "impulse", "pin": bit, "duration": actual_duration}
+        headers = {"X-API-KEY": cfg['shared_api_key']}
+        requests.post(url, json=payload, headers=headers, timeout=2)
         log_event(f"System: {output_name} nach Impuls ({actual_duration}s) wieder AUS.")
-    else:
-        # Simulation logic
+    except Exception as e:
+        log_event(f"FEHLER: Konnte Befehl an Pi nicht senden: {e}")
+        # Fallback Simulation lokal
         PiFaceWebHandler.simulated_output_state |= (1 << bit)
         time.sleep(actual_duration)
         PiFaceWebHandler.simulated_output_state &= ~(1 << bit)
-        log_event(f"Simulation: {output_name} nach Impuls ({actual_duration}s) wieder AUS.")
 
 def execute_toggle(bit):
     output_name = get_output_name(bit)
-    if PiFaceWebHandler.pifacedigital:
-        current_state = PiFaceWebHandler.pifacedigital.output_pins[bit].value
-        new_state = 1 - current_state
-        PiFaceWebHandler.pifacedigital.output_pins[bit].value = new_state
+
+    try:
+        url = f"{cfg['piface_client_url']}/cmd"
+        payload = {"action": "toggle", "pin": bit}
+        headers = {"X-API-KEY": cfg['shared_api_key']}
+        # Toggle requires knowing current state, logic is better handled on client or by explicit ON/OFF. 
+        # We send 'toggle' action to client.
+        requests.post(url, json=payload, headers=headers, timeout=2)
         log_event(f"System: {output_name} umgeschaltet auf {'EIN' if new_state else 'AUS'}.")
-    else:
+    except Exception as e:
         # Simulation logic
         is_on = (PiFaceWebHandler.simulated_output_state >> bit) & 1
         if is_on:
@@ -413,18 +455,6 @@ def process_input_event(bit):
     for tag, actions_list in sequential_groups.items():
         threading.Thread(target=_run_sequence, args=(actions_list, tag, input_name)).start()
 
-def input_monitor():
-    if not PiFaceWebHandler.pifacedigital: return
-    last_state = 0
-    while True:
-        curr = PiFaceWebHandler.pifacedigital.input_port.value
-        for i in range(8):
-            if (curr >> i) & 1 and not (last_state >> i) & 1:
-                log_event(f"Hardware: {get_input_name(i)} EIN.")
-                threading.Thread(target=process_input_event, args=(i,)).start()
-        last_state = curr
-        time.sleep(0.05)
-
 def get_my_ip():
     try: return subprocess.check_output("hostname -I", shell=True).decode('utf-8').strip().split()[0]
     except: return "127.0.0.1"
@@ -453,10 +483,8 @@ def heartbeat_monitor():
 
 if __name__ == "__main__":
     try:
-        PiFaceWebHandler.pifacedigital = pifacedigitalio.PiFaceDigital()
-        threading.Thread(target=input_monitor, daemon=True).start()
-        log_event("System gestartet - Hardware OK.")
+        log_event("Server gestartet (Controller Mode).")
     except Exception as e:
-        log_event(f"System gestartet - Simulation ({e})")
+        log_event(f"Fehler beim Start: {e}")
     threading.Thread(target=heartbeat_monitor, daemon=True).start()
     http.server.HTTPServer(('', cfg['port']), PiFaceWebHandler).serve_forever()

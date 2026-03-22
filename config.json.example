@@ -125,5 +125,8 @@
         "SSL-Verifizierung"
     ],
     "heartbeat_url": null,
-    "heartbeat_interval": 60
+    "heartbeat_interval": 60,
+
+    "piface_client_url": "http://192.168.1.50:8001",
+    "shared_api_key": "Setze_Hier_Ein_Sicheres_Geheimnis"
 }

@@ -63,24 +63,20 @@ def log_event(message):
     except Exception as e:
         print(f"Fehler beim Schreiben ins Log: {e}")
 
+def filter_log_lines(lines, exclude_list=None):
+    # Use the passed exclude_list. If None, use the config default.
+    current_excludes = exclude_list if exclude_list is not None else cfg.get('log_filter_exclude', [])
+    if current_excludes:
+        return [l for l in lines if not any(x in l for x in current_excludes)]
+    return lines
+
 def get_last_logs(n=20, exclude_list=None):
     if not os.path.exists(cfg['log_file']):
         return ["Keine Log-Einträge vorhanden."]
     try:
         with open(cfg['log_file'], "r") as f:
             lines = f.readlines()
-
-        # Use the passed exclude_list. If None, use the config default.
-        current_excludes = exclude_list if exclude_list is not None else cfg.get('log_filter_exclude', [])
-        if current_excludes:
-            # Filter lines that contain any of the exclude strings
-            filtered_lines = [
-                line for line in lines
-                if not any(exclude_str in line for exclude_str in current_excludes)
-            ]
-        else:
-            filtered_lines = lines
-
+        filtered_lines = filter_log_lines(lines, exclude_list)
         return [line.strip() for line in filtered_lines[-n:]]
     except:
         return ["Fehler beim Lesen der Log-Datei."]
@@ -287,11 +283,8 @@ class PiFaceWebHandler(http.server.BaseHTTPRequestHandler):
                     )
                     if r_logs.status_code == 200:
                         raw_logs = r_logs.json().get('logs', [])
-                        # Filter anwenden
-                        if exclude_list:
-                            client_logs = [l for l in raw_logs if not any(x in l for x in exclude_list)]
-                        else:
-                            client_logs = raw_logs
+                        # Gleiche Filterlogik wie beim Server-Log anwenden
+                        client_logs = filter_log_lines(raw_logs, exclude_list)
             except Exception:
                 # Client nicht erreichbar, behalte Standardwerte oder Simulation
                 pass

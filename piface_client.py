@@ -30,6 +30,7 @@ def load_config():
 
 cfg = load_config()
 pifacedigital = pifacedigitalio.PiFaceDigital()
+SERVER_CONNECTED = False
 
 def log_event(message):
     timestamp = datetime.now().strftime("%d.%m.%Y %H:%M:%S")
@@ -43,6 +44,14 @@ def log_event(message):
 
 class PiFaceClientHandler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
+        if self.path == "/":
+            self.send_response(200)
+            self.send_header("Content-type", "text/plain")
+            self.end_headers()
+            status = "Connected" if SERVER_CONNECTED else "Disconnected"
+            self.wfile.write(f"Server Connection: {status}".encode())
+            return
+
         if self.path == "/status":
             if self.headers.get('X-API-KEY') != cfg['shared_api_key']:
                 self.send_response(403); self.end_headers(); return
@@ -91,6 +100,7 @@ class PiFaceClientHandler(http.server.BaseHTTPRequestHandler):
         pifacedigital.output_pins[pin].turn_off()
 
 def connection_monitor():
+    global SERVER_CONNECTED
     url = f"{cfg['server_url']}/"
     interval = cfg.get('connection_check_interval', 60)
     log_event(f"Verbindungs-Monitor gestartet (Intervall: {interval}s). Prüfe {url}")
@@ -105,6 +115,8 @@ def connection_monitor():
         except Exception:
             pass
             
+        SERVER_CONNECTED = server_ok
+        
         if server_ok != last_server_ok:
             if server_ok:
                 log_event("INFO: Verbindung zum Server wiederhergestellt.")

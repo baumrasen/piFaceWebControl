@@ -5,6 +5,7 @@ import time
 import os
 import requests
 import pifacedigitalio
+from datetime import datetime
 
 CONFIG_FILE = "client_config.json"
 
@@ -13,7 +14,8 @@ def load_config():
         "port": 8001,
         "server_url": "http://127.0.0.1:8000",
         "shared_api_key": "changeMe",
-        "update_interval": 0.05
+        "update_interval": 0.05,
+        "log_file": "client.log"
     }
     if os.path.exists(CONFIG_FILE):
         try:
@@ -27,6 +29,16 @@ def load_config():
 
 cfg = load_config()
 pifacedigital = pifacedigitalio.PiFaceDigital()
+
+def log_event(message):
+    timestamp = datetime.now().strftime("%d.%m.%Y %H:%M:%S")
+    log_entry = f"[{timestamp}] {message}"
+    print(log_entry)
+    try:
+        with open(cfg['log_file'], "a") as f:
+            f.write(log_entry + "\n")
+    except Exception as e:
+        print(f"Fehler beim Schreiben ins Log: {e}")
 
 class PiFaceClientHandler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
@@ -56,6 +68,7 @@ class PiFaceClientHandler(http.server.BaseHTTPRequestHandler):
                 pin = data.get('pin')
                 
                 if pin is not None and 0 <= pin <= 7:
+                    log_event(f"CMD empfangen: {action} auf Pin {pin}")
                     if action == "impulse":
                         duration = data.get('duration', 1.0)
                         threading.Thread(target=self._impulse, args=(pin, duration)).start()
@@ -67,7 +80,7 @@ class PiFaceClientHandler(http.server.BaseHTTPRequestHandler):
                 
                 self.send_response(200)
             except Exception as e:
-                print(f"Error processing command: {e}")
+                log_event(f"Fehler bei Befehlsverarbeitung: {e}")
                 self.send_response(500)
             self.end_headers()
 
@@ -81,14 +94,14 @@ def input_monitor():
     server_url = f"{cfg['server_url']}/api/input"
     headers = {"X-API-KEY": cfg['shared_api_key'], "Content-Type": "application/json"}
     
-    print(f"Input Monitor gestartet. Sende Events an {server_url}")
+    log_event(f"Input Monitor gestartet. Sende Events an {server_url}")
 
     while True:
         curr = pifacedigital.input_port.value
         for i in range(8):
             # Flankenerkennung: 0 -> 1 (Rising Edge)
             if (curr >> i) & 1 and not (last_state >> i) & 1:
-                print(f"Input {i} erkannt -> Sende an Server...")
+                log_event(f"Hardware-Input {i} erkannt -> Sende an Server...")
                 try:
                     requests.post(
                         server_url, 
@@ -96,8 +109,9 @@ def input_monitor():
                         headers=headers, 
                         timeout=1
                     )
+                    log_event(f"Event für Input {i} erfolgreich an Server gesendet.")
                 except Exception as e:
-                    print(f"Fehler beim Senden des Input-Events: {e}")
+                    log_event(f"FEHLER beim Senden an Server: {e}")
         
         last_state = curr
         time.sleep(cfg['update_interval'])
@@ -107,9 +121,9 @@ if __name__ == "__main__":
         # Start Input Monitor in background
         threading.Thread(target=input_monitor, daemon=True).start()
         
-        print(f"PiFace Client gestartet auf Port {cfg['port']}")
+        log_event(f"PiFace Client gestartet auf Port {cfg['port']}")
         http.server.HTTPServer(('', cfg['port']), PiFaceClientHandler).serve_forever()
     except KeyboardInterrupt:
         pass
     except Exception as e:
-        print(f"Fataler Fehler: {e}")
+        log_event(f"Fataler Fehler: {e}")

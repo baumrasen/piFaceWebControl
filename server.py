@@ -504,15 +504,16 @@ def get_my_ip():
 
 def heartbeat_monitor():
     url = cfg.get('heartbeat_url')
-    if not url:
-        return # Do nothing if no URL is configured
 
     interval = cfg.get('heartbeat_interval', 60)
     if not isinstance(interval, (int, float)) or interval <= 0:
-        log_event(f"WARNUNG: Ungültiges Heartbeat-Intervall ({interval}). Deaktiviere Heartbeat.")
-        return
+        log_event(f"WARNUNG: Ungültiges Monitor-Intervall ({interval}). Setze Standard 60s.")
+        interval = 60
 
-    log_event(f"Heartbeat-Monitor für {url} gestartet (Intervall: {interval}s).")
+    if url:
+        log_event(f"Heartbeat-Monitor für {url} gestartet (Intervall: {interval}s).")
+    else:
+        log_event(f"Verbindungs-Monitor gestartet (Intervall: {interval}s).")
 
     last_client_ok = True
 
@@ -538,7 +539,7 @@ def heartbeat_monitor():
             last_client_ok = client_ok
 
         # 2. Nur wenn Client OK ist, senden wir den Heartbeat an Kuma
-        if client_ok:
+        if client_ok and url:
             try:
                 with urllib.request.urlopen(url, timeout=10) as response:
                     if not (200 <= response.status < 300):

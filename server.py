@@ -176,7 +176,8 @@ UI_TEMPLATE = """
                     var cl = "log-entry" + (l.includes(" EIN")?" log-highlight":"") + (l.includes("WARNUNG")?" log-warn":"");
                     return '<div class="'+cl+'">'+l+'</div>';
                 }}).join('');
-                document.getElementById('info').innerText = "Status: Online | IP: " + data.ip;
+                var clientStatus = data.client_ok ? '<span style="color:#34a853; font-weight:bold;">PiFace: Verbunden</span>' : '<span style="color:#d93025; font-weight:bold;">PiFace: Getrennt</span>';
+                document.getElementById('info').innerHTML = "Server: Online | IP: " + data.ip + " | " + clientStatus;
             }});
         }}
         setInterval(fetchStatus, {update_ms});
@@ -235,6 +236,7 @@ class PiFaceWebHandler(http.server.BaseHTTPRequestHandler):
             # Status vom Client (Raspberry Pi) abfragen
             in_val = 0
             out_val = PiFaceWebHandler.simulated_output_state
+            client_ok = False
             
             try:
                 r = requests.get(
@@ -246,6 +248,7 @@ class PiFaceWebHandler(http.server.BaseHTTPRequestHandler):
                     data = r.json()
                     in_val = data.get('input', 0)
                     out_val = data.get('output', 0)
+                    client_ok = True
             except Exception:
                 # Client nicht erreichbar, behalte Standardwerte oder Simulation
                 pass
@@ -253,7 +256,7 @@ class PiFaceWebHandler(http.server.BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-type", "application/json")
             self.end_headers()
-            self.wfile.write(json.dumps({"input":in_val,"output":out_val,"ip":get_my_ip(),"logs":get_last_logs(cfg['log_history_size'], exclude_list=exclude_list)}).encode())
+            self.wfile.write(json.dumps({"input":in_val,"output":out_val,"ip":get_my_ip(),"client_ok":client_ok,"logs":get_last_logs(cfg['log_history_size'], exclude_list=exclude_list)}).encode())
         elif self.path.startswith("/set"):
             bit = int(urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)["bit"][0])
             log_event(f"Web-UI: Befehl EIN für {get_output_name(bit)} empfangen.")
